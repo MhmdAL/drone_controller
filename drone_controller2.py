@@ -1,3 +1,4 @@
+from logging import exception
 from fastapi import BackgroundTasks, FastAPI
 from pydantic import BaseModel
 from typing import List, Dict
@@ -9,11 +10,25 @@ import requests
 from requests.api import request
 import pika
 import json
+import os
+import socket
 
 connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 channel = connection.channel()
 channel.queue_declare(queue='hello')
 
+drone_id = os.environ.get('DRONE_ID')
+print(f'drone id: {drone_id}')
+
+hostname = socket.gethostname()
+local_ip = socket.gethostbyname(hostname)
+print(local_ip)
+
+requests.put("http://localhost:3001/drone", json={
+                "id": drone_id,
+                "ip": local_ip,
+})
+            
 class Location(BaseModel):
     lat: float
     lng: float
@@ -55,7 +70,7 @@ package_received_flag = False
 def publish_status_event(status):
     channel.basic_publish(exchange='',
                       routing_key='mission-status-update-queue',
-                      body=json.dumps({"status": status}))
+                      body=json.dumps({"status": status, "id": mission_id}))
 
 def execute_movements(movements: List[Point]):
     global curX, curY
