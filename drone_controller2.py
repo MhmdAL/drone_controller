@@ -1,3 +1,7 @@
+import olympe
+from olympe.messages.ardrone3.Piloting import TakeOff, moveBy, Landing
+from olympe.messages.ardrone3.PilotingState import FlyingStateChanged
+
 from models import Location, Point, MissionStartRequest
 from logging import exception
 from fastapi import BackgroundTasks, FastAPI
@@ -10,6 +14,10 @@ import pika
 import json
 import os
 import socket
+
+CONTROLLER_IP = "192.168.53.1"
+drone = olympe.Drone(CONTROLLER_IP)
+drone.connect()
 
 app = FastAPI()
 
@@ -60,34 +68,68 @@ def publish_status_event(status):
 def execute_movements(movements: List[Point]):
     global curX, curY
     for movement in movements:
-        curX += movement.x
-        curY += movement.y
-        time.sleep(5)
+        drone(
+            moveBy(movement.y, movement.x, 0, 0) # moveBy: +/- forward/back, +/- right/left, +/- down/up
+            >> FlyingStateChanged(state="hovering", _timeout=5)
+        ).wait()
+
+        time.sleep(2)
 
 def execute_mission(req: MissionStartRequest):
+    
+    drone(
+        TakeOff()
+        >> FlyingStateChanged(state="hovering", _timeout=10)
+    ).wait()
+    
     execute_movements(req.homeToSourceInstructions)
     print ('reached source')
     
-    publish_status_event('waiting_loading_confirmation')
+    drone(
+        Landing()
+        >> FlyingStateChanged(state="landed", _timeout=10)
+    ).wait()
+    
+    # publish_status_event('waiting_loading_confirmation')
 
-    while(not package_loaded_flag):
-        time.sleep(1)
+    # while(not package_loaded_flag):
+    #     time.sleep(1)
         
-    execute_movements(req.sourceToDestInstructions)
-    print ('reached dest')
+    # drone(
+    #     TakeOff()
+    #     >> FlyingStateChanged(state="hovering", _timeout=10)
+    # ).wait()
     
-    publish_status_event('waiting_receiving_confirmation')
+    # execute_movements(req.sourceToDestInstructions)
+    # print ('reached dest')
     
-    while(not package_received_flag):
-        time.sleep(1)
+    # drone(
+    #     Landing()
+    #     >> FlyingStateChanged(state="landed", _timeout=10)
+    # ).wait()
+    
+    # publish_status_event('waiting_receiving_confirmation')
+    
+    # while(not package_received_flag):
+    #     time.sleep(1)
         
-    execute_movements(req.destToHomeInstructions)
-    print ('mission complete')
+    # drone(
+    #     TakeOff()
+    #     >> FlyingStateChanged(state="hovering", _timeout=10)
+    # ).wait()
+        
+    # execute_movements(req.destToHomeInstructions)
+    # print ('mission complete')
     
-    publish_status_event('finished')
+    # drone(
+    #     Landing()
+    #     >> FlyingStateChanged(state="landed", _timeout=10)
+    # ).wait()
     
-    global is_executing_mission
-    is_executing_mission = False
+    # publish_status_event('finished')
+    
+    # global is_executing_mission
+    # is_executing_mission = False
 
 # def flyTo(location: Location):
 #     dist = 100
