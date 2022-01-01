@@ -1,17 +1,17 @@
+from models import Location, Point, MissionStartRequest
 from logging import exception
 from fastapi import BackgroundTasks, FastAPI
-from pydantic import BaseModel
 from typing import List, Dict
 import time
 import math
 import threading
-from pydantic.types import Json
 import requests
-from requests.api import request
 import pika
 import json
 import os
 import socket
+
+app = FastAPI()
 
 connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 channel = connection.channel()
@@ -28,27 +28,12 @@ requests.put("http://localhost:3001/drone", json={
                 "id": drone_id,
                 "ip": local_ip,
 })
-            
-class Location(BaseModel):
-    lat: float
-    lng: float
-
-class Point(BaseModel):
-    x: float
-    y: float
-    
-class MissionStartRequest(BaseModel):
-    id: int
-    homeToSourceInstructions: List[Point]
-    sourceToDestInstructions: List[Point]
-    destToHomeInstructions: List[Point]
-
-app = FastAPI()
 
 curX = 0
 curY = 0
 
 mission_id = 0
+is_executing_mission = False
 
 class MyTask(threading.Thread):
     def run(self,*args,**kwargs):
@@ -100,6 +85,9 @@ def execute_mission(req: MissionStartRequest):
     print ('mission complete')
     
     publish_status_event('finished')
+    
+    global is_executing_mission
+    is_executing_mission = False
 
 # def flyTo(location: Location):
 #     dist = 100
@@ -116,17 +104,21 @@ def execute_mission(req: MissionStartRequest):
         
 @app.post("/start_mission")
 async def start_mission(req: MissionStartRequest, background_tasks: BackgroundTasks):
-    global mission_id, package_loaded_flag, package_received_flag
+    global mission_id, is_executing_mission, package_loaded_flag, package_received_flag
+    
+    if(is_executing_mission):
+        return json.dumps({"success": False})
+    
     mission_id = req.id
+    is_executing_mission = True
+    
     package_loaded_flag = False
     package_received_flag = False
     background_tasks.add_task(execute_mission, req)
-    
-    # t.start()
-    
+        
     publish_status_event('starting')
     
-    return 'Ok'
+    return json.dumps({"success": True})
 
 @app.post("/package_loaded")
 async def continue_mission():
