@@ -14,7 +14,7 @@ import socket
 import sys
 import paho.mqtt.client as mqtt
 
-CONTROLLER_IP = "192.168.100.2"
+CONTROLLER_IP = "10.202.0.1"
 drone = olympe.Drone(CONTROLLER_IP)
 drone.connect()
 
@@ -46,7 +46,15 @@ def start_mission(data):
         
     publish_status_event('starting')
     
-    execute_mission(data)
+    drone(
+        TakeOff()
+        >> FlyingStateChanged(state="hovering", _timeout=10)
+        >> moveBy(-1, -1, 0, 0)
+        >> moveBy(1, 1, 0, 0)
+        >> moveBy(-1, -1, 0, 0)
+    ).wait()
+
+    # execute_mission(data)
 
 def ack_load():
     print('acked load')
@@ -90,7 +98,7 @@ def execute_movements(movements: List[Point]):
     global curX, curY
     for movement in movements:
         drone(
-            moveBy(movement.y, movement.x, 0, 0) # moveBy: +/- forward/back, +/- right/left, +/- down/up
+            moveBy(movement['y'], movement['x'], 0, 0) # moveBy: +/- forward/back, +/- right/left, +/- down/up
             >> FlyingStateChanged(state="hovering", _timeout=5)
         ).wait()
 
