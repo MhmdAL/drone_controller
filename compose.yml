@@ -6,3 +6,9 @@ services:
     network_mode: "host"
     build:
       context: .
+  broker:
+    image: eclipse-mosquitto
+    tty: true
+    ports:
+      - "1883:1883"
+      - "9001:9001"

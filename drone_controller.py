@@ -1,7 +1,8 @@
+from concurrent.futures import thread
 import olympe
 from olympe.messages.ardrone3.Piloting import TakeOff, moveBy, Landing
 from olympe.messages.ardrone3.PilotingState import FlyingStateChanged
-
+from olympe.messages.common.MavlinkState import MavlinkFilePlayingStateChanged
 from logging import exception
 from typing import List, Dict
 import time
@@ -14,16 +15,20 @@ import socket
 import sys
 import paho.mqtt.client as mqtt
 
-CONTROLLER_IP = "10.202.0.1"
+CONTROLLER_IP = "192.168.53.1"
 drone = olympe.Drone(CONTROLLER_IP)
-drone.connect()
+
+def try_connect():
+    if(drone.connection_state == False):
+        with FlightListener(drone):
+            drone.connect(timeout = 5)
+    
+connection_task = threading.Timer(5.0, try_connect)
+connection_task.start()
 
 class Point():
     x: float
     y: float
-
-curX = 0
-curY = 0
 
 mission_id = 0
 is_executing_mission = False
@@ -33,6 +38,12 @@ package_received_flag = False
 
 drone_id = os.environ.get('DRONE_ID')
 print(f'drone id: {drone_id}')
+
+client = mqtt.Client('drone')
+client.connect('broker')
+client.subscribe("mission-request")
+client.subscribe("package-load-ack")
+client.subscribe("package-receive-ack")
 
 def start_mission(data):
     print('starting mission')
@@ -46,15 +57,31 @@ def start_mission(data):
         
     publish_status_event('starting')
     
-    drone(
-        TakeOff()
-        >> FlyingStateChanged(state="hovering", _timeout=10)
-        >> moveBy(-1, -1, 0, 0)
-        >> moveBy(1, 1, 0, 0)
-        >> moveBy(-1, -1, 0, 0)
-    ).wait()
+    if drone.connection_state() == True:
+        drone(
+            TakeOff()
+            >> FlyingStateChanged(state="hovering", _timeout=5)
+            >> moveBy(1, 1, 0, 0)
+            >> FlyingStateChanged(state="hovering", _timeout=5)
+        ).wait()
+        
+        # POST http://mcu/misson/generateplan (cur, dest)
+        
+        # PUT http://{drone_ip_address}/api/v1/upload/flightplan 
+        
+        # start mission
 
-    # execute_mission(data)
+class FlightListener(olympe.EventListener):
+
+    @olympe.listen_event(MavlinkFilePlayingStateChanged())
+    def onMavlinkFilePlayingStateChanged(self, event, scheduler):
+        print(
+            "flight plan state = {state}".format(
+                **event.args
+            )
+        )
+        
+        # send update to MCU
 
 def ack_load():
     print('acked load')
@@ -80,11 +107,6 @@ def on_message_handler(client, userdata, message):
     t = threading.Thread(target = on_message, args = (client, userdata, message))
     t.start()
 
-client = mqtt.Client('drone')
-client.connect('broker.emqx.io')
-client.subscribe("mission-request")
-client.subscribe("package-load-ack")
-client.subscribe("package-receive-ack")
 client.on_message = on_message_handler
 
 # hostname = socket.gethostname()
@@ -95,7 +117,6 @@ def publish_status_event(status):
     client.publish("mission-status-update", json.dumps({"status": status, "id": mission_id}))
 
 def execute_movements(movements: List[Point]):
-    global curX, curY
     for movement in movements:
         drone(
             moveBy(movement['y'], movement['x'], 0, 0) # moveBy: +/- forward/back, +/- right/left, +/- down/up
