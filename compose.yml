@@ -2,12 +2,15 @@ version: '3.3'
 
 services:
   drone_controller:
+    container_name: "DC"
     tty: true
     network_mode: "host"
     build:
       context: .
   broker:
+    container_name: "mqtt"
     image: eclipse-mosquitto
+    network_mode: "host"
     tty: true
     ports:
       - "1883:1883"
