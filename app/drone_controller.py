@@ -24,6 +24,8 @@ class Point():
     x: float
     y: float
 
+olympe.log.update_config({"loggers": {"olympe": {"level": "ERROR"}}})
+
 DRONE_IP = "10.202.0.1"
 
 drone_id = os.environ.get('DRONE_ID')
@@ -60,10 +62,13 @@ client.subscribe("mission-request")
 client.subscribe("mission-continue")
 client.subscribe("package-load-ack")
 client.subscribe("package-receive-ack")
-client.subscribe("drone-location-discovery-request")
+client.subscribe("drone-location-request")
 
-def init(station_id):
-    pass
+def init(s_id):
+    global station_id; station_id = s_id
+
+station_id = sys.argv[1]
+init(station_id)
 
 def log(message):
     file_object = open('/app/log1', 'a')
@@ -116,8 +121,11 @@ def on_drone_location_discovery_request(data):
     is_connected = drone.connect()
 
     if is_connected:
-        client.publish("drone-location-request-ack", json.dumps({"station_id": station_id, "mission_id": data['mission_id']}))
+        client.publish("drone-location-request-ack", json.dumps({"station_id": station_id}))
+        drone.disconnect()
 
+def on_drone_landed():
+    client.publish("drone-landed", json.dumps({"station_id": station_id}))
 
 def continue_mission(data):
     log('continuing mission')
@@ -127,7 +135,7 @@ def continue_mission(data):
     is_connected = drone.connect()
     
     if is_connected:
-        log('connected to drone - items loaded')
+        # log('connected to drone - items loaded')
         
         # POST http://mcu/misson/generateplan (cur, dest)
         
@@ -141,44 +149,36 @@ def continue_mission(data):
 
         publish_status_event('heading_dest')
 
-        log('disconnected from drone - items loaded')
+        # log('disconnected from drone - items loaded')
 
         drone.disconnect()
     else:
-        log('failed to connect to drone - items loaded')
+        # log('failed to connect to drone - items loaded')
 
         publish_status_event('failed')
 
 def start_mission(data):
     log('starting mission')
 
-    # global mission_id; mission_id = data['id']
-    src_station_id = data['src_station_id']
+    print(station_id)
 
-    if src_station_id == station_id:
-        log('already on the right station!')
-        publish_status_event('awaiting_load')
-        return
+    flight_plan = data['planText'].encode('utf-8')
 
     is_connected = drone.connect()
 
     if is_connected:
         log('connected to drone - start mission')
         
-        flightPlan = generate_flight_plan(station_id, src_station_id)
-
-        flightPlanUUID = upload_flight_plan(flightPlan)
+        flightPlanUUID = upload_flight_plan(flight_plan)
 
         assert drone(
             Start(flightPlanUUID, 'flightPlan', _timeout=10000)
         ).wait().success()
 
-        publish_status_event('heading_source')
-
         log('disconnected from drone - start mission')
         drone.disconnect()
     else:
-        # log('failed to connect to drone - start mission')
+        log('failed to connect to drone - start mission')
 
         publish_status_event('failed')
  
@@ -193,9 +193,10 @@ def ack_receive():
     package_received_flag = True
 
 def on_message(client, userdata, message):
-    print(message.topic)
+    log(message.topic)
+    log(message.payload.decode('utf-8'))
     data = json.loads(message.payload.decode('utf-8'))
-    if(message.topic == 'drone-location-discovery-request'):
+    if(message.topic == 'drone-location-request'):
         on_drone_location_discovery_request(data)
     elif(message.topic == 'mission-request'):
         start_mission(data)
@@ -354,8 +355,3 @@ class FlightListener(olympe.EventListener):
         file_object.close()
         
         # send update to MCU
-
-
-if(__name__ == 'main'):
-    # station_id = sys.argv[1]
-    pass
