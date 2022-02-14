@@ -7,7 +7,7 @@ services:
     network_mode: "host"
     build:
       context: .
-  broker:
+  mqtt_broker:
     container_name: "mqtt"
     image: eclipse-mosquitto
     network_mode: "host"

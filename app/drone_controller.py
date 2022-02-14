@@ -25,7 +25,7 @@ from utils import init_logger, log
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "INFO"}}})
 
-BROKER_URL = os.environ.get("BROKER_URL", 'broker.emqx.io')
+BROKER_URL = os.environ.get("BROKER_URL", 'mqtt_broker')
 DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
 DRONE_ID = os.environ.get('DRONE_ID')
 
@@ -162,7 +162,7 @@ def on_message(client, userdata, message):
         on_drone_location_discovery_request(data)
     elif(message.topic == 'mission-request'):
         start_mission(data)
-        
+
 def on_message_handler(client, userdata, message):
     t = threading.Thread(target = on_message, args = (client, userdata, message))
     t.start()
