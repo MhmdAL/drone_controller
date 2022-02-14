@@ -7,6 +7,7 @@ services:
     network_mode: "host"
     build:
       context: .
+      dockerfile: Dockerfile_x86
   mqtt_broker:
     container_name: "mqtt"
     image: eclipse-mosquitto
