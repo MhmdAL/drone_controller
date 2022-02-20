@@ -25,7 +25,7 @@ from utils import init_logger, log
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "INFO"}}})
 
-BROKER_URL = os.environ.get("BROKER_URL", 'mqtt_broker')
+BROKER_URL = os.environ.get("BROKER_URL", 'broker.emqx.io')
 DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
 DRONE_ID = os.environ.get('DRONE_ID')
 
@@ -34,6 +34,8 @@ drone = olympe.Drone(DRONE_IP)
 station_id = None
 
 client = None
+
+listener = None
 
 def try_connect():
     log ('retrying connection to drone..')
@@ -47,6 +49,9 @@ def try_connect():
         drone.disconnect()
         drone = olympe.Drone(data) #TODO: remove this
 
+    global listener; 
+    if listener != None:
+        listener.unsubscribe()
     listener = FlightListener(drone)
     listener.subscribe()
 
@@ -128,8 +133,10 @@ def on_drone_location_discovery_request(data):
     log('drone location discovery request received')
     is_connected = try_connect()
 
+    drone_pos = get_drone_position()
+
     if is_connected:
-        client.publish("drone-location-request-ack", json.dumps({"station_id": station_id}))
+        client.publish("drone-location-request-ack", json.dumps({"station_id": station_id, "current_lat": drone_pos[0], "current_lng": drone_pos[1]}))
         # drone.disconnect()
 
 def on_drone_landed():
