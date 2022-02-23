@@ -6,20 +6,15 @@ from olympe.messages.ardrone3.PilotingState import FlyingStateChanged
 
 DRONE_IP = os.environ.get("DRONE_IP", "192.168.42.1")
 
-def test_physical_drone():
+def test():
     drone = olympe.Drone(DRONE_IP)
     drone.connect(timeout = 20)
     
-    assert drone(
-        TakeOff(_timeout=15)
-        >> FlyingStateChanged(state="hovering")
-    ).wait().success()
-
-    assert drone(
-        Landing(_timeout=15)
-    ).wait().success()
+    res = drone.get_state(HomeChanged)
 
     drone.disconnect()
+    
+    print('\n==============================\nLatitude:{}\nLongitude:{}\nAltitude:{}\n==============================\n')
 
 if __name__ == "__main__":
-    test_physical_drone()
+    test()
