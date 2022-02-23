@@ -20,9 +20,9 @@ def test_moveby2():
 
     res = requests.put(f'http://{DRONE_IP}/api/v1/upload/flightplan', data=plan, headers={'Content-Type': 'application/octet-stream'})
 
-    print(res.content)
-    
     drone.disconnect()
+    
+    print(res.content)
 
 if __name__ == "__main__":
     test_moveby2()

@@ -21,8 +21,5 @@ def test_physical_drone():
 
     drone.disconnect()
 
-
-
-
 if __name__ == "__main__":
     test_physical_drone()
