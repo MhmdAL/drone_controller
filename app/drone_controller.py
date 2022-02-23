@@ -26,7 +26,7 @@ from utils import init_logger, log
 olympe.log.update_config({"loggers": {"olympe": {"level": "INFO"}}})
 
 BROKER_URL = os.environ.get("BROKER_URL", 'broker.emqx.io')
-DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
+DRONE_IP = os.environ.get("DRONE_IP", "192.168.42.1")
 DRONE_ID = os.environ.get('DRONE_ID')
 
 drone = olympe.Drone(DRONE_IP)
@@ -39,15 +39,6 @@ listener = None
 
 def try_connect():
     log ('retrying connection to drone..')
-
-    with open('/app/droneip{}.txt'.format(station_id)) as f:
-        data = f.read()
-
-    global drone
-
-    if not drone._ip_addr_str == data:
-        drone.disconnect()
-        drone = olympe.Drone(data) #TODO: remove this
 
     global listener; 
     if listener != None:
@@ -75,7 +66,7 @@ def init():
 
     global client; client = mqtt.Client('drone_station_{}'.format(station_id))
 
-    schedule.every(10).seconds.do(try_connect)
+    schedule.every(5).seconds.do(try_connect)
 
     scheduler_task = threading.Thread(target = run_schedule)
     scheduler_task.start()
@@ -97,6 +88,7 @@ def get_drone_position():
     return (res['latitude'], res['longitude'], res['altitude'])
 
 def upload_flight_plan(bytes):
+    log('uploading flight plan')
     res = requests.put(f'http://{DRONE_IP}/api/v1/upload/flightplan', data=bytes, headers={'Content-Type': 'application/octet-stream'})
 
     return res.json()
@@ -133,37 +125,37 @@ def on_drone_location_discovery_request(data):
     log('drone location discovery request received')
     is_connected = try_connect()
 
-    drone_pos = get_drone_position()
+    # drone_pos = get_drone_position()
 
     if is_connected:
-        client.publish("drone-location-request-ack", json.dumps({"station_id": station_id, "current_lat": drone_pos[0], "current_lng": drone_pos[1]}))
+        client.publish("drone-location-request-ack", json.dumps({"station_id": station_id}))
         # drone.disconnect()
 
 def on_drone_landed():
+    log('sending drone landing message')
     client.publish("drone-landed", json.dumps({"station_id": station_id}))
 
 def start_mission(data):
-    log('starting mission')
+    log('[StartMission] - starting mission')
 
     print(station_id)
 
     flight_plan = data['planText'].encode('utf-8')
+    log(data['planText'])
 
     is_connected = try_connect()
 
-    if is_connected:
-        log('connected to drone - start mission')
-        
+    if is_connected:        
         flightPlanUUID = upload_flight_plan(flight_plan)
 
         assert drone(
             Start(flightPlanUUID, 'flightPlan', _timeout=10000)
         ).wait().success()
-
-        log('disconnected from drone - start mission')
-        # drone.disconnect()
+    else:
+        log('[StartMission] - could not connect to drone')
  
 def on_message(client, userdata, message):
+    log('received message from topic {}'.format(message.topic))
     data = json.loads(message.payload.decode('utf-8'))
     if(message.topic == 'drone-location-request'):
         on_drone_location_discovery_request(data)
