@@ -22,7 +22,7 @@ def test():
 
     drone.disconnect()
     
-    print(res.content)
+    print('\n==========================\n' + res.content.decode('utf-8') + '\n==========================\n')
 
 if __name__ == "__main__":
     test()
