@@ -184,7 +184,7 @@ def print_event(event):
 
 class FlightListener(olympe.EventListener):
 
-    @olympe.listen_event(MavlinkFilePlayingStateChanged())
+    @olympe.listen_event(MavlinkFilePlayingStateChanged(_policy = 'wait'))
     def onMavlinkFilePlayingStateChanged(self, event, scheduler):
         print_event(event)
         on_flight_mission_completed()
