@@ -184,7 +184,7 @@ def print_event(event):
 
 class FlightListener(olympe.EventListener):
 
-    @olympe.listen_event(MavlinkFilePlayingStateChanged(state = "stopped", filepath = None, type = "flightPlan"))
+    @olympe.listen_event(MavlinkFilePlayingStateChanged(state = None, filepath = None, type = None))
     def onMavlinkFilePlayingStateChanged(self, event, scheduler):
         print_event(event)
         on_flight_mission_completed()
