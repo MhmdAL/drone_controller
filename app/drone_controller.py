@@ -33,6 +33,9 @@ drone = olympe.Drone(DRONE_IP)
 
 station_id = None
 
+expected_rfid = None
+station_type = None
+
 client = None
 
 listener = None
@@ -66,7 +69,7 @@ def init():
 
     global client; client = mqtt.Client('drone_station_{}'.format(station_id))
 
-    schedule.every(5).seconds.do(try_connect)
+    schedule.every(1).seconds.do(try_connect)
 
     scheduler_task = threading.Thread(target = run_schedule)
     scheduler_task.start()
@@ -92,31 +95,6 @@ def upload_flight_plan(bytes):
     res = requests.put(f'http://{DRONE_IP}/api/v1/upload/flightplan', data=bytes, headers={'Content-Type': 'application/octet-stream'})
 
     return res.json()
-
-def generate_flight_plan(station1, station2):
-    # TODO: this should retreive the flight plan from the backend
-
-    # POST http://mcu/misson/generateplan (cur, dest)
-
-    plan_name = "plan1.txt"
-
-    if station1 == 2 and station2 == 4:
-        plan_name = 'plan1.txt'
-    elif station1 == 6 and station2 == 4:
-        plan_name = 'plan1.txt'
-    if station1 == 2 and station2 == 6:
-        plan_name = 'plan2.txt'
-    elif station1 == 4 and station2 == 6:
-        plan_name = 'plan2.txt'
-    if station1 == 4 and station2 == 2:
-        plan_name = 'plan3.txt'
-    elif station1 == 6 and station2 == 2:
-        plan_name = 'plan3.txt'
-
-    with open(f'/app/{plan_name}', 'rb') as f:
-        plan = f.read()
-
-    return plan
 
 def publish_status_event(status):
     client.publish("mission-status-update", json.dumps({"status": status}))
@@ -153,6 +131,10 @@ def start_mission(data):
         ).wait().success()
     else:
         log('[StartMission] - could not connect to drone')
+
+def handle_station_update(data):
+    global expected_rfid; expected_rfid = data.expectedRfid
+    global station_type; station_type = data.stationType
  
 def on_message(client, userdata, message):
     log('received message from topic {}'.format(message.topic))
@@ -161,6 +143,8 @@ def on_message(client, userdata, message):
         on_drone_location_discovery_request(data)
     elif(message.topic == 'mission-request'):
         start_mission(data)
+    elif(message.topic == 'station-update-{}'.format(station_id)):
+        handle_station_update(data)
 
 def on_message_handler(client, userdata, message):
     t = threading.Thread(target = on_message, args = (client, userdata, message))
