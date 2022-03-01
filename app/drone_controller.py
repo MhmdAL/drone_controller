@@ -189,7 +189,7 @@ class FlightListener(olympe.EventListener):
         print_event(event)
         on_flight_mission_completed()
 
-    @olympe.listen_event(FlyingStateChanged(state = 'landing') >> FlyingStateChanged(state = 'landed'))
+    @olympe.listen_event(FlyingStateChanged(state = 'landing', _policy = 'wait') >> FlyingStateChanged(state = 'landed', _policy = 'wait'))
     def onFlyingStateChanged(self, event, scheduler):
         print_event(event)
         on_drone_landed()
