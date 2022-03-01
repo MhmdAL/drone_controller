@@ -76,6 +76,7 @@ def init():
     
     client.connect(BROKER_URL, 1883, 60)
 
+    client.subscribe("land-request")
     client.subscribe("mission-request")
     client.subscribe("drone-location-request")
 
@@ -96,9 +97,6 @@ def upload_flight_plan(bytes):
 
     return res.json()
 
-def publish_status_event(status):
-    client.publish("mission-status-update", json.dumps({"status": status}))
-
 def on_drone_location_discovery_request(data):
     log('drone location discovery request received')
     is_connected = try_connect()
@@ -106,12 +104,16 @@ def on_drone_location_discovery_request(data):
     # drone_pos = get_drone_position()
 
     if is_connected:
-        client.publish("drone-location-request-ack", json.dumps({"station_id": station_id}))
+        client.publish("drone-location-request-ack-event", json.dumps({"station_id": station_id}))
         # drone.disconnect()
 
 def on_drone_landed():
     log('sending drone landing message')
-    client.publish("drone-landed", json.dumps({"station_id": station_id}))
+    client.publish("drone-landed-event", json.dumps({"station_id": station_id}))
+
+def on_flight_mission_completed():
+    log('sending flight mission completed message')
+    client.publish("flight-mission-completed-event", json.dumps({"station_id": station_id}))
 
 def start_mission(data):
     log('[StartMission] - starting mission')
@@ -132,6 +134,18 @@ def start_mission(data):
     else:
         log('[StartMission] - could not connect to drone')
 
+def land(data):
+    log('[Land] - landing')
+
+    is_connected = try_connect()
+
+    if is_connected:        
+        assert drone(
+            Landing(_timeout=100)
+        ).wait().success()
+    else:
+        log('[Land] - could not connect to drone')
+
 def handle_station_update(data):
     global expected_rfid; expected_rfid = data.expectedRfid
     global station_type; station_type = data.stationType
@@ -145,6 +159,8 @@ def on_message(client, userdata, message):
         start_mission(data)
     elif(message.topic == 'station-update-{}'.format(station_id)):
         handle_station_update(data)
+    elif(message.topic == 'land-request'):
+        land(data)
 
 def on_message_handler(client, userdata, message):
     t = threading.Thread(target = on_message, args = (client, userdata, message))
@@ -164,9 +180,10 @@ def print_event(event):
 
 class FlightListener(olympe.EventListener):
 
-    # @olympe.listen_event(MavlinkFilePlayingStateChanged())
-    # def onMavlinkFilePlayingStateChanged(self, event, scheduler):
-    #     print_event(event)
+    @olympe.listen_event(MavlinkFilePlayingStateChanged(state = "stopped"))
+    def onMavlinkFilePlayingStateChanged(self, event, scheduler):
+        print_event(event)
+        on_flight_mission_completed()
 
     @olympe.listen_event(FlyingStateChanged(state = 'landing') >> FlyingStateChanged(state = 'landed'))
     def onFlyingStateChanged(self, event, scheduler):
