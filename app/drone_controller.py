@@ -44,8 +44,9 @@ def try_connect():
     log ('retrying connection to drone..')
 
     global listener; 
-    if listener != None:
+    if not drone.connected and listener != None:
         listener.unsubscribe()
+        
     listener = FlightListener(drone)
     listener.subscribe()
 
