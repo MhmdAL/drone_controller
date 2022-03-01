@@ -42,7 +42,7 @@ listener = None
 
 def try_connect():
     if drone.connected:
-        return
+        return true
     
     log ('retrying connection to drone..')
 
