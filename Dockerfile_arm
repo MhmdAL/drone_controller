@@ -1,4 +1,7 @@
-FROM ubuntu:20.04 as builder
+# FROM dpulpeiro/parrot-olympe:1.8.0-python3.7-slim-buster
+FROM arm32v7/ubuntu:20.04 as builder
+
+RUN printf hello
 
 RUN apt-get update \
     && apt-get upgrade -y \
@@ -18,7 +21,7 @@ RUN printf '\nifeq ("$(TARGET_CPU)",“pi3”)\nTARGET_GLOBAL_CFLAGS += -march=a
     && mv ~/code/parrot-olympe/packages/clang/libclang/armv7a-linux-gnuabihf.tar.gz ~/code/parrot-olympe/packages/clang/libclang/armv7a-linux-gnuabihf \
     && ~/code/parrot-olympe/build.sh -p olympe-linux -t images -j
 
-FROM python:3.9.9-slim-bullseye
+FROM --platform=linux/arm/v7 python:3.9.9-slim-bullseye
 
 COPY --from=builder /home/builduser/code/parrot-olympe/out/olympe-linux/images /tmp/wheels
 
@@ -27,7 +30,7 @@ RUN apt-get update \
     && apt-get install -y build-essential libgl1 \
     && cd /tmp/wheels \
     && pip install $(ls) \
-    && pip install haversine \
+    && pip install protobuf haversine \
     && adduser olympe 
 
 USER olympe
