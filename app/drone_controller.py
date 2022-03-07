@@ -22,6 +22,12 @@ import paho.mqtt.client as mqtt
 import schedule
 from models import Point
 from utils import init_logger, log
+import serial
+import adafruit_fingerprint
+
+uart = serial.Serial("/dev/ttyUSB0", baudrate=57600, timeout=1)
+
+finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "INFO"}}})
 
@@ -33,12 +39,22 @@ drone = olympe.Drone(DRONE_IP)
 
 station_id = None
 
+expected_fpid = None
 expected_rfid = None
 station_type = None
 
 client = None
 
 listener = None
+
+def get_fingerprint():
+    while finger.get_image() != adafruit_fingerprint.OK:
+        pass
+    if finger.image_2_tz(1) != adafruit_fingerprint.OK:
+        return False
+    if finger.finger_search() != adafruit_fingerprint.OK:
+        return False
+    return True
 
 def try_connect():
     if drone.connected:
@@ -77,11 +93,21 @@ def init():
 
     scheduler_task = threading.Thread(target = run_schedule)
     scheduler_task.start()
+
+    print("----------------")
+    if finger.read_templates() != adafruit_fingerprint.OK:
+        raise RuntimeError("Failed to read templates")
+    print("Fingerprint templates: ", finger.templates)
+    if finger.count_templates() != adafruit_fingerprint.OK:
+        raise RuntimeError("Failed to read templates")
+    print("Number of templates found: ", finger.template_count)
+    if finger.read_sysparam() != adafruit_fingerprint.OK:
+        raise RuntimeError("Failed to get system parameters")
     
     client.connect(BROKER_URL, 1883, 60)
 
     client.subscribe("land-request")
-    client.subscribe("mission-request")
+    client.subscribe("start-mission-request")
     client.subscribe("drone-location-request")
 
     client.on_message = on_message_handler
@@ -101,15 +127,19 @@ def upload_flight_plan(bytes):
 
     return res.json()
 
+def upload_flight_plan_and_start_mission(flight_plan):
+    flightPlanUUID = upload_flight_plan(flight_plan)
+
+    assert drone(
+        Start(flightPlanUUID, 'flightPlan', _timeout=10000)
+    ).wait().success()
+
 def on_drone_location_discovery_request(data):
     log('drone location discovery request received')
     is_connected = try_connect()
 
-    # drone_pos = get_drone_position()
-
     if is_connected:
         client.publish("drone-location-request-ack-event", json.dumps({"station_id": station_id}))
-        # drone.disconnect()
 
 def on_drone_landed():
     log('sending drone landing message')
@@ -119,22 +149,23 @@ def on_flight_mission_completed():
     log('sending flight mission completed message')
     client.publish("flight-mission-completed-event", json.dumps({"station_id": station_id}))
 
+    if get_fingerprint():
+        if finger.finger_id == expected_fp_id:
+            log('matched fingerprint')
+        print("Detected #", finger.finger_id, "with confidence", finger.confidence)
+    else:
+        print("Finger not found")
+
 def start_mission(data):
     log('[StartMission] - starting mission')
-
-    print(station_id)
 
     flight_plan = data['planText'].encode('utf-8')
     log(data['planText'])
 
     is_connected = try_connect()
 
-    if is_connected:        
-        flightPlanUUID = upload_flight_plan(flight_plan)
-
-        assert drone(
-            Start(flightPlanUUID, 'flightPlan', _timeout=10000)
-        ).wait().success()
+    if is_connected:  
+        upload_flight_plan_and_start_mission(flight_plan)      
     else:
         log('[StartMission] - could not connect to drone')
 
@@ -151,17 +182,18 @@ def land(data):
         log('[Land] - could not connect to drone')
 
 def handle_station_update(data):
-    global expected_rfid; expected_rfid = data.expectedRfid
-    global station_type; station_type = data.stationType
+    global expected_fpid; expected_fpid = data.expected_fpid
+    global expected_rfid; expected_rfid = data.expected_rfid
+    global station_type; station_type = data.station_type
  
 def on_message(client, userdata, message):
     log('received message from topic {}'.format(message.topic))
     data = json.loads(message.payload.decode('utf-8'))
     if(message.topic == 'drone-location-request'):
         on_drone_location_discovery_request(data)
-    elif(message.topic == 'mission-request'):
+    elif(message.topic == 'start-mission-request'):
         start_mission(data)
-    elif(message.topic == 'station-update-{}'.format(station_id)):
+    elif(message.topic == 'station-update-{}-request'.format(station_id)):
         handle_station_update(data)
     elif(message.topic == 'land-request'):
         land(data)
