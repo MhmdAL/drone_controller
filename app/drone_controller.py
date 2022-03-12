@@ -22,12 +22,6 @@ import paho.mqtt.client as mqtt
 import schedule
 from models import Point
 from utils import init_logger, log
-import serial
-import adafruit_fingerprint
-
-uart = serial.Serial("/dev/ttyUSB0", baudrate=57600, timeout=1)
-
-finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "INFO"}}})
 
@@ -46,15 +40,6 @@ station_type = None
 client = None
 
 listener = None
-
-def get_fingerprint():
-    while finger.get_image() != adafruit_fingerprint.OK:
-        pass
-    if finger.image_2_tz(1) != adafruit_fingerprint.OK:
-        return False
-    if finger.finger_search() != adafruit_fingerprint.OK:
-        return False
-    return True
 
 def try_connect():
     if drone.connected:
@@ -93,22 +78,13 @@ def init():
 
     scheduler_task = threading.Thread(target = run_schedule)
     scheduler_task.start()
-
-    print("----------------")
-    if finger.read_templates() != adafruit_fingerprint.OK:
-        raise RuntimeError("Failed to read templates")
-    print("Fingerprint templates: ", finger.templates)
-    if finger.count_templates() != adafruit_fingerprint.OK:
-        raise RuntimeError("Failed to read templates")
-    print("Number of templates found: ", finger.template_count)
-    if finger.read_sysparam() != adafruit_fingerprint.OK:
-        raise RuntimeError("Failed to get system parameters")
     
     client.connect(BROKER_URL, 1883, 60)
 
     client.subscribe("land-request")
     client.subscribe("start-mission-request")
     client.subscribe("drone-location-request")
+    client.subscribe(f"station-update-{station_id}-request")
 
     client.on_message = on_message_handler
 
@@ -145,16 +121,20 @@ def on_drone_landed():
     log('sending drone landing message')
     client.publish("drone-landed-event", json.dumps({"station_id": station_id}))
 
-def on_flight_mission_completed():
+def on_drone_reached_destination():
     log('sending flight mission completed message')
     client.publish("flight-mission-completed-event", json.dumps({"station_id": station_id}))
 
-    if get_fingerprint():
-        if finger.finger_id == expected_fp_id:
-            log('matched fingerprint')
-        print("Detected #", finger.finger_id, "with confidence", finger.confidence)
+    if DRONE_IP == '192.168.42.1':
+        from auth_controller import get_fingerprint, finger
+        if get_fingerprint():
+            if finger.finger_id == expected_fpid:
+                log('matched fingerprint')
+            print("Detected #", finger.finger_id, "with confidence", finger.confidence)
+        else:
+            print("Finger not found")
     else:
-        print("Finger not found")
+        log ('getting fingerprint')
 
 def start_mission(data):
     log('[StartMission] - starting mission')
@@ -216,13 +196,13 @@ def print_event(event):
 
 class FlightListener(olympe.EventListener):
 
-    @olympe.listen_event(MavlinkFilePlayingStateChanged(_policy = 'wait'))
-    def onMavlinkFilePlayingStateChanged(self, event, scheduler):
+    @olympe.listen_event(FlyingStateChanged(state = 'flying', _policy = 'wait') >> FlyingStateChanged(state = 'hovering', _policy = 'wait'))
+    def onFlyingThenHovering(self, event, scheduler):
         print_event(event)
-        on_flight_mission_completed()
+        on_drone_reached_destination()
 
     @olympe.listen_event(FlyingStateChanged(state = 'landing', _policy = 'wait') >> FlyingStateChanged(state = 'landed', _policy = 'wait'))
-    def onFlyingStateChanged(self, event, scheduler):
+    def onLanded(self, event, scheduler):
         print_event(event)
         on_drone_landed()
         
