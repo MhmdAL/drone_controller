@@ -5,22 +5,20 @@ import drone_controller
 import schedule
 import time
 import threading
-
-station_id = None
+import station_state as State
+import fingerprint_handler
 
 def init():
-    global station_id
-    if len(sys.argv) > 1:
-        station_id = sys.argv[1]
-    else:
-        station_id = 1
+    State.set_station_id(int(sys.argv[1]))
 
-    utils.init_logger(station_id)
+    utils.init_logger(State.station_id)
     drone_controller.init()
     
     scheduler_task = threading.Thread(target = run_schedule)
     scheduler_task.start()
 
+    fingerprint_handler.init()
+    
     mqtt_handler.init()
     mqtt_handler.start()
 

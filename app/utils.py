@@ -5,7 +5,7 @@ LOG_FILE_BASE = './log'
 log_file = LOG_FILE_BASE
 
 def init_logger(station_id):
-    global log_file; log_file = LOG_FILE_BASE + station_id
+    global log_file; log_file = LOG_FILE_BASE + str(station_id)
 
 def log(message):
     file_object = open(log_file, 'a')

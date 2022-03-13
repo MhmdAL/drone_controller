@@ -7,7 +7,7 @@ COPY ./dc_setup.sh ~/dc_setup.sh
 COPY app/ /app/
 
 USER root
-RUN chown olympe /app
+RUN chmod 777 /app
 USER olympe
 
 ENTRYPOINT ["sh", "~/dc_setup.sh"]

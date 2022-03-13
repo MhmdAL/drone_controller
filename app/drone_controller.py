@@ -1,4 +1,3 @@
-from main import *
 import mqtt_handler as MQTT
 import olympe
 from olympe.messages.ardrone3.Piloting import TakeOff, moveBy, Landing
@@ -13,6 +12,8 @@ import json
 import schedule
 from utils import log, log_event
 import os
+import station_state as State
+import fingerprint_handler as FP
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "INFO"}}})
 
@@ -34,6 +35,8 @@ def init():
     MQTT.on_start_mission_request += start_mission
     MQTT.on_land_request += land
     MQTT.on_station_update_request += handle_station_assignment
+
+    FP.on_finger_detected += on_finger_detected
 
 def try_connect():
     if drone.connected:
@@ -63,6 +66,13 @@ def get_drone_position():
 
     return (res['latitude'], res['longitude'], res['altitude'])
 
+def on_finger_detected(finger_id):
+    if finger_id >= expected_fpid and finger_id < expected_fpid + 5:
+        print('correct fingerprint')
+        MQTT.publish_message('acknowledge-recipient-event', json.dumps({"station_id": State.station_id}))
+    else:
+        print('incorrect fingerprint')
+
 def upload_flight_plan(bytes):
     log('uploading flight plan')
     res = requests.put(f'http://{DRONE_IP}/api/v1/upload/flightplan', data=bytes, headers={'Content-Type': 'application/octet-stream'})
@@ -81,27 +91,16 @@ def on_drone_location_discovery_request(data):
     is_connected = try_connect()
 
     if is_connected:
-        MQTT.publish_message("drone-location-request-ack-event", json.dumps({"station_id": station_id}))
+        MQTT.publish_message("drone-location-request-ack-event", json.dumps({"station_id": State.station_id}))
 
 def on_drone_landed():
     log('sending drone landing message')
-    MQTT.publish_message("drone-landed-event", json.dumps({"station_id": station_id}))
+    MQTT.publish_message("drone-landed-event", json.dumps({"station_id": State.station_id}))
 
 def on_drone_reached_destination():
     log('sending flight mission completed message')
-    MQTT.publish_message("flight-mission-completed-event", json.dumps({"station_id": station_id}))
-
-    if DRONE_IP == '192.168.42.1':
-        from auth_controller import get_fingerprint, finger
-        if get_fingerprint():
-            if finger.finger_id == expected_fpid:
-                log('matched fingerprint')
-            print("Detected #", finger.finger_id, "with confidence", finger.confidence)
-        else:
-            print("Finger not found")
-    else:
-        log ('getting fingerprint')
-
+    MQTT.publish_message("flight-mission-completed-event", json.dumps({"station_id": State.station_id}))
+    
 def start_mission(data):
     log('[StartMission] - starting mission')
 
@@ -127,9 +126,9 @@ def land(data):
         log('[Land] - could not connect to drone')
 
 def handle_station_assignment(data):
-    global expected_fpid; expected_fpid = data.expected_fpid
-    global expected_rfid; expected_rfid = data.expected_rfid
-    global station_type; station_type = data.station_type
+    global expected_fpid; expected_fpid = data['expected_fpid']
+    global expected_rfid; expected_rfid = data['expected_rfid']
+    global station_type; station_type = data['station_type']
 
 class FlightListener(olympe.EventListener):
 

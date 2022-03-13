@@ -3,7 +3,7 @@ import json
 import threading
 import os
 import paho.mqtt.client as mqtt
-from main import *
+import station_state as State
 from Event import *
 
 BROKER_URL = os.environ.get("BROKER_URL", 'broker.emqx.io')
@@ -14,13 +14,13 @@ on_drone_location_request = Event()
 on_station_update_request = Event()
 
 def init():
-    global client; client = mqtt.Client('drone_station_{}'.format(station_id))
+    global client; client = mqtt.Client('drone_station_{}'.format(State.station_id))
 
     client.connect(BROKER_URL, 1883, 60)
     client.subscribe("land-request")
     client.subscribe("start-mission-request")
     client.subscribe("drone-location-request")
-    client.subscribe(f"station-update-{station_id}-request")
+    client.subscribe(f"station-update-{State.station_id}-request")
 
     client.on_message = on_message_handler
 
@@ -34,7 +34,7 @@ def on_message(client, userdata, message):
         on_drone_location_request(data)
     elif(message.topic == 'start-mission-request'):
         on_start_mission_request(data)
-    elif(message.topic == 'station-update-{}-request'.format(station_id)):
+    elif(message.topic == 'station-update-{}-request'.format(State.station_id)):
         on_station_update_request(data)
     elif(message.topic == 'land-request'):
         on_land_request(data)
